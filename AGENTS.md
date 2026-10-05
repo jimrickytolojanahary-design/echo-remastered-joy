@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Keep native textarea sizing in a global CSS rule and shared Textarea defaults, and apply equivalent sizing to the shared rich-text editor frame, so every form preserves resizing across UI state changes.
