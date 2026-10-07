@@ -30,6 +30,8 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onOpenBooking })
   const [botcheck, setBotcheck] = useState(false);
   const [sending, setSending] = useState(false);
   const [needsHtml, setNeedsHtml] = useState('');
+  const [website, setWebsite] = useState('');
+  const formLoadedAtRef = useRef<number>(Date.now());
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

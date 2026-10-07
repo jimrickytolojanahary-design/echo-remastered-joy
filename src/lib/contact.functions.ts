@@ -8,6 +8,8 @@ const contactSchema = z.object({
   role: z.string().min(1).max(200),
   messageHtml: z.string().min(1),
   messageText: z.string().min(1),
+  website: z.string().max(255).optional(),
+  elapsedMs: z.number().nonnegative().optional(),
 });
 
 const escapeHtml = (value: string) =>
