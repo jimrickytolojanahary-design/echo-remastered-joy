@@ -130,7 +130,7 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
 
     // Choisir la copie la plus proche de la zone visible (boucle infinie).
     const selectorBounds = selector.getBoundingClientRect();
-    let target = candidates[0];
+    let target: HTMLElement = candidates[0]!;
     let bestDistance = Infinity;
     for (const candidate of candidates) {
       const b = candidate.getBoundingClientRect();
