@@ -113,6 +113,52 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
     });
   }, [activeProjectId]);
 
+  // Desktop (>= 1024px) : ne plus forcer le centrage de l'élément actif.
+  // Défilement minimal (inline: 'nearest') avec marge de confort de 28px,
+  // uniquement si l'élément n'est pas entièrement visible.
+  const desktopScrollRanRef = useRef(false);
+  useEffect(() => {
+    const selector = selectorRef.current;
+    if (!selector || !window.matchMedia('(min-width: 1024px)').matches) return;
+    const candidates = Array.from(selector.querySelectorAll<HTMLElement>(`[data-project-id="${activeProjectId}"]`));
+    if (!candidates.length) return;
+
+    if (!desktopScrollRanRef.current) {
+      desktopScrollRanRef.current = true;
+      return;
+    }
+
+    // Choisir la copie la plus proche de la zone visible (boucle infinie).
+    const selectorBounds = selector.getBoundingClientRect();
+    let target = candidates[0];
+    let bestDistance = Infinity;
+    for (const candidate of candidates) {
+      const b = candidate.getBoundingClientRect();
+      const distance = b.left > selectorBounds.right
+        ? b.left - selectorBounds.right
+        : b.right < selectorBounds.left
+          ? selectorBounds.left - b.right
+          : 0;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        target = candidate;
+      }
+    }
+
+    const targetBounds = target.getBoundingClientRect();
+    const comfortMargin = 28;
+    const fullyVisible = targetBounds.left >= selectorBounds.left + comfortMargin
+      && targetBounds.right <= selectorBounds.right - comfortMargin;
+    if (fullyVisible) return;
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({
+      inline: 'nearest',
+      block: 'nearest',
+      behavior: reduceMotion ? 'auto' : 'smooth',
+    });
+  }, [activeProjectId]);
+
   const currentProject = projectsData.find((p) => p.id === activeProjectId) || projectsData[0];
   if (!currentProject) return null;
   const activeViewId = activeViewByProject[currentProject.id] ?? currentProject.screenshots[0]?.id ?? '';
@@ -169,7 +215,7 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
           <Button type="button" variant="outline" size="icon" onClick={() => selectAdjacentProject(-1)} aria-label="Projet précédent" className="hidden sm:inline-flex shrink-0 rounded-full border-[#DED3C5] bg-white text-[#4A3F35] shadow-sm hover:bg-[#F3EDE4]">
             <ChevronLeft />
           </Button>
-          <div ref={selectorRef} className="-mx-4 flex flex-1 items-center justify-start overflow-x-auto px-4 pb-4 gap-2.5 sm:mx-0 sm:snap-x snap-mandatory sm:justify-center sm:px-0 sm:gap-3 scrollbar-none">
+          <div ref={selectorRef} className="-mx-4 flex flex-1 items-center justify-start overflow-x-auto px-4 pb-4 gap-2.5 sm:mx-0 sm:max-lg:snap-x sm:max-lg:snap-mandatory sm:justify-center sm:px-0 sm:gap-3 scrollbar-none">
           {[0, 1, 2].flatMap((copy) =>
           projectsData.map((project) => {
             const isSelected = project.id === activeProjectId;
@@ -182,7 +228,7 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
                 tabIndex={copy === 1 ? 0 : -1}
                 type="button"
                 onClick={() => setActiveProjectId(project.id)}
-                className={`flex items-center gap-2 px-4 sm:snap-center sm:px-5 py-3 rounded-2xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer shrink-0 border ${
+                className={`flex items-center gap-2 px-4 sm:max-lg:snap-center sm:px-5 py-3 rounded-2xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer shrink-0 border lg:scroll-ml-7 lg:scroll-mr-7 ${
                   isSelected
                     ? 'bg-[#2D241E] text-[#FDFBF7] border-[#2D241E] shadow-md scale-[1.02]'
                     : 'bg-white/90 text-[#5C4D3E] border-[#E8E1D5] hover:bg-white hover:border-[#D5C7B7]'
