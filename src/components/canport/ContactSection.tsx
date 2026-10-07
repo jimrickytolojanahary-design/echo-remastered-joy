@@ -246,6 +246,22 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onOpenBooking })
               </p>
 
                 <form onSubmit={handleSubmit} noValidate className="space-y-4">
+                  {/* Champ piège antispam — invisible pour les humains */}
+                  <div
+                    aria-hidden="true"
+                    style={{ position: 'absolute', left: '-9999px', top: '-9999px', height: 0, width: 0, overflow: 'hidden' }}
+                  >
+                    <label htmlFor="contact-website">Site web</label>
+                    <input
+                      id="contact-website"
+                      type="text"
+                      name="website"
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
+                      tabIndex={-1}
+                      autoComplete="off"
+                    />
+                  </div>
                   {/* Plan / Subject selector */}
                   <div>
                     <label htmlFor="contact-plan" className="text-xs font-bold text-[#3E3228] block mb-2">
