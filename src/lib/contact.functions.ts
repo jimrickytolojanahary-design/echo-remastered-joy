@@ -8,6 +8,8 @@ const contactSchema = z.object({
   role: z.string().min(1).max(200),
   messageHtml: z.string().min(1),
   messageText: z.string().min(1),
+  website: z.string().max(255).optional(),
+  elapsedMs: z.number().nonnegative().optional(),
 });
 
 const escapeHtml = (value: string) =>
@@ -26,7 +28,12 @@ export const sendContactEmail = createServerFn({ method: 'POST' })
       throw new Error('RESEND_API_KEY is not configured');
     }
 
-    const { plan, name, email, role, messageHtml, messageText } = data;
+    const { plan, name, email, role, messageHtml, messageText, website, elapsedMs } = data;
+
+    // Antispam : honeypot rempli ou envoi en moins de 3 s -> rejet silencieux
+    if ((website && website.trim() !== '') || (typeof elapsedMs === 'number' && elapsedMs < 3000)) {
+      return { success: true };
+    }
 
     const html = `
       <div style="font-family: Arial, sans-serif; color: #2D241E; line-height: 1.6;">
