@@ -28,7 +28,12 @@ export const sendContactEmail = createServerFn({ method: 'POST' })
       throw new Error('RESEND_API_KEY is not configured');
     }
 
-    const { plan, name, email, role, messageHtml, messageText } = data;
+    const { plan, name, email, role, messageHtml, messageText, website, elapsedMs } = data;
+
+    // Antispam : honeypot rempli ou envoi en moins de 3 s -> rejet silencieux
+    if ((website && website.trim() !== '') || (typeof elapsedMs === 'number' && elapsedMs < 3000)) {
+      return { success: true };
+    }
 
     const html = `
       <div style="font-family: Arial, sans-serif; color: #2D241E; line-height: 1.6;">

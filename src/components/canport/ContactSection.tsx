@@ -56,6 +56,8 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ onOpenBooking })
           role: formData.role.trim(),
           messageHtml: needsHtml,
           messageText: formData.needs,
+          website,
+          elapsedMs: Date.now() - formLoadedAtRef.current,
         },
       });
       setSubmitted(true);
