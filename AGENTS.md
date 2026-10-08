@@ -10,3 +10,4 @@
 <!-- LOVABLE:END -->
 
 - Keep native textarea sizing in a global CSS rule and shared Textarea defaults, and apply equivalent sizing to the shared rich-text editor frame, so every form preserves resizing across UI state changes.
+- Keep desktop project-pill alignment and timed DOM scrolling gated at 1024px, with loop rebasing outside animations; this preserves the existing mobile/tablet navigation and bidirectional continuity without another library.

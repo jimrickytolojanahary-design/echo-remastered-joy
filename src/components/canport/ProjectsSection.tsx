@@ -29,6 +29,9 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
   });
   const [isDetailsOpen, setIsDetailsOpen] = useState<boolean>(false);
   const selectorRef = useRef<HTMLDivElement>(null);
+  const desktopDirectionRef = useRef<-1 | 1 | null>(null);
+  const desktopPreviousProjectRef = useRef(activeProjectId);
+  const desktopInitializedRef = useRef(false);
   const [selectorOverflows, setSelectorOverflows] = useState(false);
   const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
@@ -79,6 +82,8 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
     };
 
     const recenter = () => {
+      // Desktop owns its animation and only rebases between transitions.
+      if (window.matchMedia('(min-width: 1024px)').matches) return;
       const w = copyWidth();
       if (w <= 0) return;
       if (selector.scrollLeft < w * 0.5) {
@@ -118,47 +123,99 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
     });
   }, [activeProjectId]);
 
-  // Desktop (>= 1024px) : alignement de l'élément actif en position de
-  // départ (inline: 'start') avec marge de confort de 28px (scroll-margin),
-  // à chaque changement de projet (flèches ou pills).
-  const desktopScrollRanRef = useRef(false);
+  // Desktop only: align the painted left edge, including the existing
+  // selected-pill scale, and animate one step before silently rebasing.
   useEffect(() => {
     const selector = selectorRef.current;
-    if (!selector || !window.matchMedia('(min-width: 1024px)').matches) return;
-    const candidates = Array.from(selector.querySelectorAll<HTMLElement>(`[data-project-id="${activeProjectId}"]`));
-    if (!candidates.length) return;
-
-    if (!desktopScrollRanRef.current) {
-      desktopScrollRanRef.current = true;
-      return;
+    if (!selector) return;
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    let frame = 0;
+    let disposed = false;
+    const edgePosition = (pill: HTMLElement) => {
+      const bounds = pill.getBoundingClientRect();
+      const width = Number.parseFloat(window.getComputedStyle(pill).width);
+      // Undo the current scale, then account for the final selected scale (1.02).
+      return selector.scrollLeft + bounds.left - selector.getBoundingClientRect().left
+        + (bounds.width - width) / 2 - width * 0.01;
+    };
+    const align = (animate: boolean) => {
+      cancelAnimationFrame(frame);
+      if (!desktop.matches) return;
+      const pill = selector.querySelector<HTMLElement>(`[data-project-id="${activeProjectId}"][data-copy="1"]`);
+      const first = selector.querySelector<HTMLElement>('[data-copy="0"]');
+      const second = selector.querySelector<HTMLElement>('[data-copy="1"]');
+      if (!pill || !first || !second) return;
+      const pitch = second.offsetLeft - first.offsetLeft;
+      const maxScroll = selector.scrollWidth - selector.clientWidth;
+      if (pitch <= 0 || maxScroll <= 0) return;
+      // Native scrolling rounds to device pixels: round down to avoid clipping.
+      const canonical = Math.floor(edgePosition(pill));
+      let target = canonical;
+      const previousId = desktopPreviousProjectRef.current;
+      const direction = desktopDirectionRef.current;
+      if (animate && previousId !== activeProjectId) {
+        if (direction === 1) {
+          while (target <= selector.scrollLeft + 1) target += pitch;
+        } else if (direction === -1) {
+          while (target >= selector.scrollLeft - 1) target -= pitch;
+        } else {
+          target += Math.round((selector.scrollLeft - target) / pitch) * pitch;
+        }
+      }
+      // Keep the full viewport inside the three copies, without reversing
+      // the animation at the 4 -> 1 or 1 -> 4 seam.
+      while (target > maxScroll) {
+        selector.scrollLeft -= pitch;
+        target -= pitch;
+      }
+      while (target < 0) {
+        selector.scrollLeft += pitch;
+        target += pitch;
+      }
+      desktopPreviousProjectRef.current = activeProjectId;
+      desktopDirectionRef.current = null;
+      desktopInitializedRef.current = true;
+      if (!animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        selector.scrollLeft = canonical;
+        return;
+      }
+      const start = selector.scrollLeft;
+      const startedAt = performance.now();
+      const tick = (now: number) => {
+        if (!desktop.matches) return;
+        const progress = Math.min((now - startedAt) / 350, 1);
+        const eased = progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
+        selector.scrollLeft = start + (target - start) * eased;
+        if (progress < 1) frame = requestAnimationFrame(tick);
+        else selector.scrollLeft = canonical;
+      };
+      frame = requestAnimationFrame(tick);
+    };
+    const initialAlignment = !desktopInitializedRef.current;
+    align(!initialAlignment);
+    const realign = () => align(false);
+    const onBreakpointChange = () => {
+      desktopInitializedRef.current = false;
+      if (desktop.matches) align(false);
+      else cancelAnimationFrame(frame);
+    };
+    let observedWidth = selector.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (selector.clientWidth === observedWidth) return;
+      observedWidth = selector.clientWidth;
+      realign();
+    });
+    observer.observe(selector);
+    desktop.addEventListener('change', onBreakpointChange);
+    if (initialAlignment) {
+      void document.fonts.ready.then(() => { if (!disposed) realign(); });
     }
-
-    // Alignement "start" : l'élément actif se cale sur le bord gauche du
-    // strip avec une marge de confort de 28px. On choisit la copie dont
-    // l'alignement tombe dans la bande centrale (boucle infinie).
-    const maxScroll = selector.scrollWidth - selector.clientWidth;
-    const firstCopy = selector.querySelector<HTMLElement>('[data-copy="0"]');
-    const secondCopy = selector.querySelector<HTMLElement>('[data-copy="1"]');
-    const pitch = firstCopy && secondCopy
-      ? secondCopy.offsetLeft - firstCopy.offsetLeft
-      : selector.scrollWidth / 3;
-    if (maxScroll <= 0 || pitch <= 0) return;
-
-    // Recentrage silencieux de la position actuelle avant l'animation.
-    const current = selector.scrollLeft;
-    if (current < pitch * 0.5) selector.scrollLeft = current + pitch;
-    else if (current > pitch * 1.5) selector.scrollLeft = current - pitch;
-
-    const selectorRect = selector.getBoundingClientRect();
-    const base = candidates[0]!.getBoundingClientRect();
-    let targetLeft = selector.scrollLeft + (base.left - selectorRect.left) - 28;
-    // Ramène la position cible dans la bande centrale [pitch/2, 3*pitch/2)
-    targetLeft = pitch / 2 + (((targetLeft - pitch / 2) % pitch) + pitch) % pitch;
-    if (targetLeft > maxScroll) targetLeft -= pitch;
-    if (targetLeft < 0 || targetLeft > maxScroll) return;
-
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    selector.scrollTo({ left: targetLeft, behavior: reduceMotion ? 'auto' : 'smooth' });
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      desktop.removeEventListener('change', onBreakpointChange);
+    };
   }, [activeProjectId]);
 
   const currentProject = projectsData.find((p) => p.id === activeProjectId) || projectsData[0];
@@ -175,6 +232,14 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
   };
 
   const selectAdjacentProject = (direction: -1 | 1) => {
+    if (window.matchMedia('(min-width: 1024px)').matches) {
+      desktopDirectionRef.current = direction;
+      setActiveProjectId((id) => {
+        const index = projectsData.findIndex((project) => project.id === id);
+        return projectsData[(index + direction + projectsData.length) % projectsData.length]?.id ?? id;
+      });
+      return;
+    }
     const currentIndex = projectsData.findIndex((project) => project.id === currentProject.id);
     const nextIndex = (currentIndex + direction + projectsData.length) % projectsData.length;
     const nextProject = projectsData[nextIndex];
