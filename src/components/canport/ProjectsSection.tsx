@@ -148,7 +148,8 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
       const pitch = second.offsetLeft - first.offsetLeft;
       const maxScroll = selector.scrollWidth - selector.clientWidth;
       if (pitch <= 0 || maxScroll <= 0) return;
-      const canonical = edgePosition(pill);
+      // Native scrolling rounds to device pixels: round down to avoid clipping.
+      const canonical = Math.floor(edgePosition(pill));
       let target = canonical;
       const previousId = desktopPreviousProjectRef.current;
       const direction = desktopDirectionRef.current;
@@ -190,17 +191,25 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
       };
       frame = requestAnimationFrame(tick);
     };
-    align(desktopInitializedRef.current);
+    const initialAlignment = !desktopInitializedRef.current;
+    align(!initialAlignment);
     const realign = () => align(false);
     const onBreakpointChange = () => {
       desktopInitializedRef.current = false;
       if (desktop.matches) align(false);
       else cancelAnimationFrame(frame);
     };
-    const observer = new ResizeObserver(realign);
+    let observedWidth = selector.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (selector.clientWidth === observedWidth) return;
+      observedWidth = selector.clientWidth;
+      realign();
+    });
     observer.observe(selector);
     desktop.addEventListener('change', onBreakpointChange);
-    void document.fonts.ready.then(() => { if (!disposed) realign(); });
+    if (initialAlignment) {
+      void document.fonts.ready.then(() => { if (!disposed) realign(); });
+    }
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
