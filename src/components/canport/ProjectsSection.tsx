@@ -71,7 +71,12 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
     const selector = selectorRef.current;
     if (!selector) return;
 
-    const copyWidth = () => selector.scrollWidth / 3;
+    const copyWidth = () => {
+      const first = selector.querySelector<HTMLElement>('[data-copy="0"]');
+      const second = selector.querySelector<HTMLElement>('[data-copy="1"]');
+      const pitch = first && second ? second.offsetLeft - first.offsetLeft : 0;
+      return pitch > 0 ? pitch : selector.scrollWidth / 3;
+    };
 
     const recenter = () => {
       const w = copyWidth();
@@ -128,31 +133,32 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
       return;
     }
 
-    // Choisir la copie la plus proche de la zone visible (boucle infinie).
-    const selectorBounds = selector.getBoundingClientRect();
-    let target: HTMLElement = candidates[0]!;
-    let bestDistance = Infinity;
-    for (const candidate of candidates) {
-      const b = candidate.getBoundingClientRect();
-      const distance = b.left > selectorBounds.right
-        ? b.left - selectorBounds.right
-        : b.right < selectorBounds.left
-          ? selectorBounds.left - b.right
-          : 0;
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        target = candidate;
-      }
-    }
-
     // Alignement "start" : l'élément actif se cale sur le bord gauche du
-    // strip, marge de confort de 28px appliquée via scroll-margin.
+    // strip avec une marge de confort de 28px. On choisit la copie dont
+    // l'alignement tombe dans la bande centrale (boucle infinie).
+    const maxScroll = selector.scrollWidth - selector.clientWidth;
+    const firstCopy = selector.querySelector<HTMLElement>('[data-copy="0"]');
+    const secondCopy = selector.querySelector<HTMLElement>('[data-copy="1"]');
+    const pitch = firstCopy && secondCopy
+      ? secondCopy.offsetLeft - firstCopy.offsetLeft
+      : selector.scrollWidth / 3;
+    if (maxScroll <= 0 || pitch <= 0) return;
+
+    // Recentrage silencieux de la position actuelle avant l'animation.
+    const current = selector.scrollLeft;
+    if (current < pitch * 0.5) selector.scrollLeft = current + pitch;
+    else if (current > pitch * 1.5) selector.scrollLeft = current - pitch;
+
+    const selectorRect = selector.getBoundingClientRect();
+    const base = candidates[0]!.getBoundingClientRect();
+    let targetLeft = selector.scrollLeft + (base.left - selectorRect.left) - 28;
+    // Ramène la position cible dans la bande centrale [pitch/2, 3*pitch/2)
+    targetLeft = pitch / 2 + (((targetLeft - pitch / 2) % pitch) + pitch) % pitch;
+    if (targetLeft > maxScroll) targetLeft -= pitch;
+    if (targetLeft < 0 || targetLeft > maxScroll) return;
+
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    target.scrollIntoView({
-      inline: 'start',
-      block: 'nearest',
-      behavior: reduceMotion ? 'auto' : 'smooth',
-    });
+    selector.scrollTo({ left: targetLeft, behavior: reduceMotion ? 'auto' : 'smooth' });
   }, [activeProjectId]);
 
   const currentProject = projectsData.find((p) => p.id === activeProjectId) || projectsData[0];
@@ -211,7 +217,7 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
           <Button type="button" variant="outline" size="icon" onClick={() => selectAdjacentProject(-1)} aria-label="Projet précédent" className="hidden sm:inline-flex shrink-0 rounded-full border-[#DED3C5] bg-white text-[#4A3F35] shadow-sm hover:bg-[#F3EDE4]">
             <ChevronLeft />
           </Button>
-          <div ref={selectorRef} className="-mx-4 flex flex-1 items-center justify-start overflow-x-auto px-4 pb-4 gap-2.5 sm:mx-0 sm:max-lg:snap-x sm:max-lg:snap-mandatory sm:justify-center sm:px-0 sm:gap-3 scrollbar-none">
+          <div ref={selectorRef} className="-mx-4 flex flex-1 items-center justify-start overflow-x-auto px-4 pb-4 gap-2.5 sm:mx-0 sm:max-lg:snap-x sm:max-lg:snap-mandatory sm:px-0 sm:gap-3 scrollbar-none sm:[&>*:first-child]:ml-auto sm:[&>*:last-child]:mr-auto">
           {[0, 1, 2].flatMap((copy) =>
           projectsData.map((project) => {
             const isSelected = project.id === activeProjectId;
