@@ -113,9 +113,9 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
     });
   }, [activeProjectId]);
 
-  // Desktop (>= 1024px) : ne plus forcer le centrage de l'élément actif.
-  // Défilement minimal (inline: 'nearest') avec marge de confort de 28px,
-  // uniquement si l'élément n'est pas entièrement visible.
+  // Desktop (>= 1024px) : alignement de l'élément actif en position de
+  // départ (inline: 'start') avec marge de confort de 28px (scroll-margin),
+  // à chaque changement de projet (flèches ou pills).
   const desktopScrollRanRef = useRef(false);
   useEffect(() => {
     const selector = selectorRef.current;
@@ -145,15 +145,11 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
       }
     }
 
-    const targetBounds = target.getBoundingClientRect();
-    const comfortMargin = 28;
-    const fullyVisible = targetBounds.left >= selectorBounds.left + comfortMargin
-      && targetBounds.right <= selectorBounds.right - comfortMargin;
-    if (fullyVisible) return;
-
+    // Alignement "start" : l'élément actif se cale sur le bord gauche du
+    // strip, marge de confort de 28px appliquée via scroll-margin.
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     target.scrollIntoView({
-      inline: 'nearest',
+      inline: 'start',
       block: 'nearest',
       behavior: reduceMotion ? 'auto' : 'smooth',
     });
