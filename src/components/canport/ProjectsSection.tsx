@@ -20,7 +20,17 @@ interface ProjectsSectionProps {
 }
 
 export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking }) => {
-  const [activeProjectId, setActiveProjectId] = useState<string>(projectsData[0]?.id ?? '');
+  const [activeProjectId, setSelectedProjectId] = useState<string>(projectsData[0]?.id ?? '');
+  const [desktopIndex, setDesktopIndex] = useState(0);
+  const desktopRailRef = useRef<HTMLDivElement>(null);
+  const [desktopPositions, setDesktopPositions] = useState<number[]>([]);
+  // All selection paths (including the project cards) update both values together.
+  const setActiveProjectId = (id: string) => {
+    const index = projectsData.findIndex((project) => project.id === id);
+    if (index < 0) return;
+    setDesktopIndex(index);
+    setSelectedProjectId(id);
+  };
   const [activeViewByProject, setActiveViewByProject] = useState<Record<string, string>>({
     'suivi-clients': 'sc-1',
     'suivi-taches': 'st-1',
@@ -29,9 +39,6 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
   });
   const [isDetailsOpen, setIsDetailsOpen] = useState<boolean>(false);
   const selectorRef = useRef<HTMLDivElement>(null);
-  const desktopDirectionRef = useRef<-1 | 1 | null>(null);
-  const desktopPreviousProjectRef = useRef(activeProjectId);
-  const desktopInitializedRef = useRef(false);
   const [selectorOverflows, setSelectorOverflows] = useState(false);
   const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
@@ -123,100 +130,34 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
     });
   }, [activeProjectId]);
 
-  // Desktop only: align the painted left edge, including the existing
-  // selected-pill scale, and animate one step before silently rebasing.
+  // Measure the existing variable-width pills; CSS owns every desktop transition.
   useEffect(() => {
-    const selector = selectorRef.current;
-    if (!selector) return;
-    const desktop = window.matchMedia('(min-width: 1024px)');
-    let frame = 0;
+    const rail = desktopRailRef.current;
+    if (!rail) return;
     let disposed = false;
-    const edgePosition = (pill: HTMLElement) => {
-      const bounds = pill.getBoundingClientRect();
-      const width = Number.parseFloat(window.getComputedStyle(pill).width);
-      // Undo the current scale, then account for the final selected scale (1.02).
-      return selector.scrollLeft + bounds.left - selector.getBoundingClientRect().left
-        + (bounds.width - width) / 2 - width * 0.01;
+    const measure = () => {
+      if (disposed || !window.matchMedia('(min-width: 1024px)').matches) return;
+      const pills = Array.from(rail.querySelectorAll<HTMLElement>('[data-desktop-copy="0"]'));
+      const first = pills[0];
+      if (!first) return;
+      setDesktopPositions(pills.map((pill) => {
+        const width = Number.parseFloat(window.getComputedStyle(pill).width);
+        // Preserve scale-[1.02], while keeping the painted edge fully visible.
+        return pill.offsetLeft - first.offsetLeft - width * 0.01;
+      }));
     };
-    const align = (animate: boolean) => {
-      cancelAnimationFrame(frame);
-      if (!desktop.matches) return;
-      const pill = selector.querySelector<HTMLElement>(`[data-project-id="${activeProjectId}"][data-copy="1"]`);
-      const first = selector.querySelector<HTMLElement>('[data-copy="0"]');
-      const second = selector.querySelector<HTMLElement>('[data-copy="1"]');
-      if (!pill || !first || !second) return;
-      const pitch = second.offsetLeft - first.offsetLeft;
-      const maxScroll = selector.scrollWidth - selector.clientWidth;
-      if (pitch <= 0 || maxScroll <= 0) return;
-      // Native scrolling rounds to device pixels: round down to avoid clipping.
-      const canonical = Math.floor(edgePosition(pill));
-      let target = canonical;
-      const previousId = desktopPreviousProjectRef.current;
-      const direction = desktopDirectionRef.current;
-      if (animate && previousId !== activeProjectId) {
-        if (direction === 1) {
-          while (target <= selector.scrollLeft + 1) target += pitch;
-        } else if (direction === -1) {
-          while (target >= selector.scrollLeft - 1) target -= pitch;
-        } else {
-          target += Math.round((selector.scrollLeft - target) / pitch) * pitch;
-        }
-      }
-      // Keep the full viewport inside the three copies, without reversing
-      // the animation at the 4 -> 1 or 1 -> 4 seam.
-      while (target > maxScroll) {
-        selector.scrollLeft -= pitch;
-        target -= pitch;
-      }
-      while (target < 0) {
-        selector.scrollLeft += pitch;
-        target += pitch;
-      }
-      desktopPreviousProjectRef.current = activeProjectId;
-      desktopDirectionRef.current = null;
-      desktopInitializedRef.current = true;
-      if (!animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        selector.scrollLeft = canonical;
-        return;
-      }
-      const start = selector.scrollLeft;
-      const startedAt = performance.now();
-      const tick = (now: number) => {
-        if (!desktop.matches) return;
-        const progress = Math.min((now - startedAt) / 350, 1);
-        const eased = progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
-        selector.scrollLeft = start + (target - start) * eased;
-        if (progress < 1) frame = requestAnimationFrame(tick);
-        else selector.scrollLeft = canonical;
-      };
-      frame = requestAnimationFrame(tick);
-    };
-    const initialAlignment = !desktopInitializedRef.current;
-    align(!initialAlignment);
-    const realign = () => align(false);
-    const onBreakpointChange = () => {
-      desktopInitializedRef.current = false;
-      if (desktop.matches) align(false);
-      else cancelAnimationFrame(frame);
-    };
-    let observedWidth = selector.clientWidth;
-    const observer = new ResizeObserver(() => {
-      if (selector.clientWidth === observedWidth) return;
-      observedWidth = selector.clientWidth;
-      realign();
-    });
-    observer.observe(selector);
-    desktop.addEventListener('change', onBreakpointChange);
-    if (initialAlignment) {
-      void document.fonts.ready.then(() => { if (!disposed) realign(); });
-    }
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(rail);
+    rail.querySelectorAll<HTMLElement>('[data-desktop-copy="0"]').forEach((pill) => observer.observe(pill));
+    window.addEventListener('resize', measure);
+    void document.fonts.ready.then(measure);
     return () => {
       disposed = true;
-      cancelAnimationFrame(frame);
       observer.disconnect();
-      desktop.removeEventListener('change', onBreakpointChange);
+      window.removeEventListener('resize', measure);
     };
-  }, [activeProjectId]);
+  }, []);
 
   const currentProject = projectsData.find((p) => p.id === activeProjectId) || projectsData[0];
   if (!currentProject) return null;
@@ -233,11 +174,9 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
 
   const selectAdjacentProject = (direction: -1 | 1) => {
     if (window.matchMedia('(min-width: 1024px)').matches) {
-      desktopDirectionRef.current = direction;
-      setActiveProjectId((id) => {
-        const index = projectsData.findIndex((project) => project.id === id);
-        return projectsData[(index + direction + projectsData.length) % projectsData.length]?.id ?? id;
-      });
+      const nextIndex = (desktopIndex + direction + projectsData.length) % projectsData.length;
+      const nextProject = projectsData[nextIndex];
+      if (nextProject) setActiveProjectId(nextProject.id);
       return;
     }
     const currentIndex = projectsData.findIndex((project) => project.id === currentProject.id);
@@ -282,6 +221,7 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
           <Button type="button" variant="outline" size="icon" onClick={() => selectAdjacentProject(-1)} aria-label="Projet précédent" className="hidden sm:inline-flex shrink-0 rounded-full border-[#DED3C5] bg-white text-[#4A3F35] shadow-sm hover:bg-[#F3EDE4]">
             <ChevronLeft />
           </Button>
+          <div className="contents lg:hidden">
           <div ref={selectorRef} className="-mx-4 flex flex-1 items-center justify-start overflow-x-auto px-4 pb-4 gap-2.5 sm:mx-0 sm:max-lg:snap-x sm:max-lg:snap-mandatory sm:px-0 sm:gap-3 scrollbar-none sm:[&>*:first-child]:ml-auto sm:[&>*:last-child]:mr-auto">
           {[0, 1, 2].flatMap((copy) =>
           projectsData.map((project) => {
@@ -311,6 +251,41 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
             );
           })
           )}
+          </div>
+          </div>
+          <div className="hidden sm:block sm:max-lg:hidden min-w-0 flex-1 overflow-hidden pb-4">
+            <div
+              ref={desktopRailRef}
+              className="relative flex w-max items-center gap-3 transition-transform duration-300 ease-out motion-reduce:transition-none"
+              style={{ transform: `translateX(${-(desktopPositions[desktopIndex] ?? 0)}px)` }}
+            >
+              {[0, 1].flatMap((copy) => projectsData.map((project, index) => {
+                const isSelected = index === desktopIndex;
+                return (
+                  <Button
+                    key={`desktop-${project.id}-${copy}`}
+                    data-project-id={project.id}
+                    data-desktop-copy={copy}
+                    type="button"
+                    variant="ghost"
+                    aria-pressed={isSelected}
+                    onClick={() => setActiveProjectId(project.id)}
+                    className={`h-auto flex items-center gap-2 px-4 sm:max-lg:snap-center sm:px-5 py-3 rounded-2xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap cursor-pointer shrink-0 border lg:scroll-ml-7 lg:scroll-mr-7 ${
+                      isSelected
+                        ? 'bg-[#2D241E] text-[#FDFBF7] border-[#2D241E] shadow-md scale-[1.02]'
+                        : 'bg-white/90 text-[#5C4D3E] border-[#E8E1D5] hover:bg-white hover:border-[#D5C7B7]'
+                    }`}
+                  >
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      isSelected ? 'bg-[#43362C] text-[#E0A97E]' : 'bg-[#F2ECE4] text-[#7A695B]'
+                    }`}>
+                      {project.number}
+                    </span>
+                    <span>{project.title}</span>
+                  </Button>
+                );
+              }))}
+            </div>
           </div>
           <Button type="button" variant="outline" size="icon" onClick={() => selectAdjacentProject(1)} aria-label="Projet suivant" className="hidden sm:inline-flex shrink-0 rounded-full border-[#DED3C5] bg-white text-[#4A3F35] shadow-sm hover:bg-[#F3EDE4]">
             <ChevronRight />
