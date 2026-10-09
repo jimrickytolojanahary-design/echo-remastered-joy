@@ -140,10 +140,14 @@ export const ProjectsSection: React.FC<ProjectsSectionProps> = ({ onOpenBooking 
       const pills = Array.from(rail.querySelectorAll<HTMLElement>('[data-desktop-copy="0"]'));
       const first = pills[0];
       if (!first) return;
+      const gap = Number.parseFloat(window.getComputedStyle(rail).columnGap) || 0;
+      let left = 0;
       setDesktopPositions(pills.map((pill) => {
         const width = Number.parseFloat(window.getComputedStyle(pill).width);
         // Preserve scale-[1.02], while keeping the painted edge fully visible.
-        return pill.offsetLeft - first.offsetLeft - width * 0.01;
+        const position = left - width * 0.01;
+        left += width + gap;
+        return position;
       }));
     };
     measure();
